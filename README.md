@@ -62,3 +62,46 @@ shipmybox parcels
 ```
 - Add `--last` to only display the most recently added parcel.
 - Add `--json` for JSON output that can be piped into `jq` or other tools.
+
+### 4. Monitor & Send Notifications (`check`)
+Check if a new parcel has appeared or if the status of your last parcel has changed since the previous check, and send a notification. This is ideal for running as a background cronjob.
+
+```bash
+shipmybox check
+```
+
+- Add `--dry-run` to simulate the check, print notification output, and skip saving state or sending actual notifications.
+- Add `--verbose` or `-v` to print execution logs.
+
+#### Configuration (Pushover)
+To receive notifications (currently supported via Pushover), you need to configure your credentials:
+
+##### Option A: Configuration File
+Create `~/.config/shipmybox/config.json`:
+```json
+{
+  "notification_method": "pushover",
+  "notifiers": {
+    "pushover": {
+      "token": "your_pushover_app_token",
+      "user": "your_pushover_user_key"
+    }
+  }
+}
+```
+
+##### Option B: Environment Variables
+Alternatively, you can set the configuration using environment variables:
+```bash
+export PUSHOVER_TOKEN="your_pushover_app_token"
+export PUSHOVER_USER="your_pushover_user_key"
+```
+
+#### Running as a Linux Cronjob
+You can schedule checks to run automatically. Since cron runs in a minimal environment, it is best to pass environment variables directly or use the config file.
+
+For example, to run every hour:
+```cron
+0 * * * * PUSHOVER_TOKEN="your_token" PUSHOVER_USER="your_user" /usr/local/bin/shipmybox check
+```
+*(Ensure you use the absolute path to `shipmybox` / `python` executable in your system.)*
