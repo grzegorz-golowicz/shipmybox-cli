@@ -6,6 +6,8 @@ from rich.panel import Panel
 
 from shipmybox.client import ShipMyBoxClient
 from shipmybox.exceptions import ShipMyBoxException
+from shipmybox.notifications import get_notification_config, get_notifier
+from shipmybox.state import load_state, save_state
 
 app = typer.Typer(help="ShipMyBox CLI tool for extracting personal parcels and address info.")
 console = Console()
@@ -90,6 +92,89 @@ def parcels(
                 )
 
             console.print(table)
+    except ShipMyBoxException as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+@app.command()
+def check(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Simulate check and print notifications without sending them or saving state"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Print detailed execution logs to stdout")
+):
+    """Check the status of the last parcel. Notify if status changes or a new parcel arrives."""
+    client = get_client()
+    try:
+        if verbose:
+            console.print("[bold blue]Retrieving parcels...[/bold blue]")
+        parcels = client.get_parcels()
+        
+        if not parcels:
+            if verbose:
+                console.print("[yellow]No parcels found on your account. Exiting.[/yellow]")
+            return
+
+        # Last parcel is parcels[-1]
+        last_parcel = parcels[-1]
+        parcel_num = last_parcel.get("number", "N/A")
+        parcel_status = last_parcel.get("status", "N/A")
+        
+        if verbose:
+            console.print(f"Current last parcel: [cyan]{parcel_num}[/cyan] with status: [magenta]{parcel_status}[/magenta]")
+
+        # Load state
+        old_state = load_state()
+        
+        # Determine notifications
+        notification_msg = None
+        
+        if old_state is None:
+            # First run behavior: Send notification about the current last parcel
+            if verbose:
+                console.print("[green]First run detected. Sending initial notification for last parcel.[/green]")
+            notification_msg = f"New parcel has appeared!\nNumber: {parcel_num}\nStatus: {parcel_status}"
+        else:
+            old_num = old_state.get("number")
+            old_status = old_state.get("status")
+            
+            if verbose:
+                console.print(f"Loaded previous state: [cyan]{old_num}[/cyan] with status: [magenta]{old_status}[/magenta]")
+                
+            if old_num != parcel_num:
+                # New parcel appeared
+                notification_msg = f"New parcel has appeared!\nNumber: {parcel_num}\nStatus: {parcel_status}"
+            elif old_status != parcel_status:
+                # Status changed
+                notification_msg = f"Parcel {parcel_num} status changed: {old_status} -> {parcel_status}"
+            else:
+                if verbose:
+                    console.print("[green]No changes detected since last check.[/green]")
+
+        if notification_msg:
+            method, notifier_config = get_notification_config()
+            if verbose:
+                console.print(f"[bold blue]Sending notification using '{method}'...[/bold blue]")
+                
+            if dry_run:
+                console.print(Panel.fit(
+                    f"[bold yellow]DRY RUN: Notification would be sent via {method}[/bold yellow]\n\n{notification_msg}",
+                    title="Notification Simulation"
+                ))
+            else:
+                notifier = get_notifier(method, notifier_config)
+                notifier.send(notification_msg)
+                if verbose:
+                    console.print("[bold green]Notification sent successfully.[/bold green]")
+        
+        # Save state if not a dry run
+        if not dry_run:
+            new_state = {
+                "number": parcel_num,
+                "status": parcel_status
+            }
+            save_state(new_state)
+            if verbose:
+                console.print("[green]State updated.[/green]")
+            
     except ShipMyBoxException as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(code=1)

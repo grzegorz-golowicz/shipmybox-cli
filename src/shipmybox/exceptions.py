@@ -7,5 +7,9 @@ class LoginError(ShipMyBoxException):
     pass
 
 class DataExtractionError(ShipMyBoxException):
-    """Raised when data cannot be extracted from the page."""
+    """Raised when parsing/extraction of data fails."""
+    pass
+
+class NotificationError(ShipMyBoxException):
+    """Raised when sending a notification fails."""
     pass
